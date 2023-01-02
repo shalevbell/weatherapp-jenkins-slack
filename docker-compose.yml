@@ -1,0 +1,17 @@
+version: "3.9"
+services:		
+    flask1:
+        image: shlevbell/flaskapp:latest
+        hostname: weathersite1
+        ports:
+            - "9090"
+    flask2:
+        image: shlevbell/flaskapp:latest
+        hostname: weathersite2
+        ports:
+            - "9090"
+    nginx:
+        image: shlevbell/nginxapp:latest
+        ports:
+            - "80:80"
+

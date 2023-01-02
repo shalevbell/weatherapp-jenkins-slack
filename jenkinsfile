@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+    environment{
+        dockerhub=credentials('12f3935b-bd98-4eeb-bc7a-183294b6a8d9')
+    }
+    stages {
+    	stage('Build Container') {
+            steps {
+            	checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 					'f74fddd2-35de-4439-a847-5a60851163cf', url: 'http://3.69.145.209/gitlab-instance-0180b431/myproj']]])
+            }
+        }
+        stage('Build & Run Container') {
+            steps {
+                sh  '''
+                        cd myweatherapp/flask
+                        docker rm -f flask
+                        docker build -t flaskapp .
+                        docker build -t nginxapp .
+                        docker run -d -p 9090:9090 --name flask flaskapp
+                    '''
+            }
+        }
+        stage('Test') {
+            steps {
+                sh  '''
+                    cd myweatherapp/flask/
+                    pip3 install requests unittest2
+                    python3 test_weather.py
+                    '''
+            }
+        }
+        stage('Push To Dockerhub'){
+            steps {
+                sh '''
+                    docker tag flaskapp:latest shlevbell/flaskapp:latest
+                    docker tag nginxapp:latest shlevbell/nginxapp:latest
+                    echo $dockerhub_PSW | docker login -u $dockerhub_USR --password-stdin
+                    docker push shlevbell/flaskapp:latest
+                    docker push shlevbell/nginxapp:latest
+                    '''
+            }
+        }   
+        stage('Deployment'){
+            steps{
+                    sshagent (credentials: ['be6e06bc-954a-4021-b6e5-7566c6fa431']) {
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no ec2-user@3.75.165.113 docker-compose down
+                    scp -o StrictHostKeyChecking=no myweatherapp/docker-compose.yml ec2-user@3.75.165.113:~
+                    ssh -o StrictHostKeyChecking=no ec2-user@3.75.165.113 docker-compose up &
+                '''
+                }
+            }
+        }
+    }    
+        post {
+        success {
+                slackSend ( 
+                channel: 'devops_alerts', 
+                color: '#00ffdd', 
+                message: 'Jenkins pipeline was succesful', 
+                tokenCredentialId: 'Slack-token'
+                )    
+            
+        }
+        failure {
+                slackSend ( 
+                channel: 'succeeded_build', 
+                color: '#ff0000', 
+                message: 'Jenkins pipeline failed :(', 
+                tokenCredentialId: 'Slack-token'
+                )
+        }
+        }   
+    }
